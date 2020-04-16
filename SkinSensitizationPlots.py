@@ -138,10 +138,7 @@ print(X_2d.shape)
 print(y_2d)
 print(y_2d.shape)
 
-# It is usually a good idea to scale the data for SVM training.
-# We are cheating a bit in this example in scaling all of the data,
-# instead of fitting the transformation on the training set and
-# just applying it on the test set.
+
 
 scaler = StandardScaler()
 X = scaler.fit_transform(X)
@@ -154,9 +151,6 @@ X_2d = scaler.fit_transform(X_2d)
 #print(X_2d)
 #print(X_2d.shape)
 
-# #############################################################################
-# Train classifiers
-#
 # For an initial search, a logarithmic grid with basis
 # 10 is often helpful. Using a basis of 2, a finer
 # tuning can be achieved but at a much higher cost.
@@ -192,10 +186,7 @@ for C in C_2d_range:
         clf.fit(X_2d, y_2d)
         classifiers.append((C, gamma, clf))
 
-# #############################################################################
-# Visualization
-#
-# draw visualization of parameter effects
+
 
 plt.figure(figsize=(8, 6))
 xx, yy = np.meshgrid(np.linspace(-3, 3, 200), np.linspace(-3, 3, 200))
@@ -221,13 +212,7 @@ scores = grid.cv_results_['mean_test_score'].reshape(len(C_range),
                                                      len(gamma_range))
 
 # Draw heatmap of the validation accuracy as a function of gamma and C
-#
-# The score are encoded as colors with the hot colormap which varies from dark
-# red to bright yellow. As the most interesting scores are all located in the
-# 0.92 to 0.97 range we use a custom normalizer to set the mid-point to 0.92 so
-# as to make it easier to visualize the small variations of score values in the
-# interesting range while not brutally collapsing all the low score values to
-# the same color.
+
 
 plt.figure(figsize=(8, 6))
 plt.subplots_adjust(left=.2, right=0.95, bottom=0.15, top=0.95)
