@@ -29,7 +29,7 @@ from sklearn.model_selection import GridSearchCV
 
 import csv
 
-with open(r'C:\Users\kirby\OneDrive\Documents\LateAugustMetaComb7.csv', 'rU') as infile:
+with open(r'C:\INSERTFILEPATH.csv', 'rU') as infile:
   
     reader = csv.DictReader(infile)
     data = {}
@@ -42,7 +42,7 @@ with open(r'C:\Users\kirby\OneDrive\Documents\LateAugustMetaComb7.csv', 'rU') as
 
 print(infile)
 
-rawdata = pd.read_csv('C:\Users\kirby\OneDrive\Documents\LateAugustMetaComb7.csv', skiprows=0)
+rawdata = pd.read_csv('C:INSERTFILEPATH.csv', skiprows=0)
 #rawdata.drop(["GNPS"], axis = 1, inplace = True)
 
 #print(rawdata)
