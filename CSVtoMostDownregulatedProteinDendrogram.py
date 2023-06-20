@@ -33,7 +33,7 @@ pio.renderers.default= 'svg'
 
 import csv
 #make it easy to append all column data from a csv
-with open(r'C:\Users\thetr\OneDrive\Documents\Python Scripts\1863_RA\1863RAprotein.csv', 'rU') as infile:
+with open(r'C:\Users\thetr\OneDrive\Documents\Python Scripts\FOLDERHERE\FILENAMEHERE.csv', 'rU') as infile:
   
     reader = csv.DictReader(infile)
     data = {}
@@ -46,7 +46,7 @@ with open(r'C:\Users\thetr\OneDrive\Documents\Python Scripts\1863_RA\1863RAprote
 
 print(infile)
 
-rawdata = pd.read_csv(r'C:\Users\thetr\OneDrive\Documents\Python Scripts\1863_RA\1863RAprotein.csv', skiprows=0)
+rawdata = pd.read_csv(r'C:\Users\thetr\OneDrive\Documents\Python Scripts\FOLDERHERE\FILENAMEHERE.csv', skiprows=0)
 
 print(rawdata)
 
