@@ -1,18 +1,15 @@
-
 from sklearn.datasets import make_classification
-import matplotlib
-from matplotlib import pyplot as plt
 from sklearn.linear_model import LogisticRegression
-import seaborn as sns
-sns.set()
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import confusion_matrix as cm
+from sklearn.metrics import confusion_matrix
+from scipy.special import expit
+import matplotlib.pyplot as plt
+import seaborn as sns
 import pandas as pd
 
-from scipy.special import expit
+sns.set()
 
-
-
+# Generate synthetic binary classification data
 x, y = make_classification(
     n_samples=100,
     n_features=1,
@@ -22,35 +19,52 @@ x, y = make_classification(
     n_informative=1,
     n_redundant=0,
     n_repeated=0
-    )
+)
 
+# Plot raw data
+plt.figure()
 plt.scatter(x, y, c=y, cmap='rainbow')
+plt.title('Raw Classification Data')
+plt.xlabel('Feature')
+plt.ylabel('Class')
+plt.show()
 
-x_train, x_test, y_train, y_test = train_test_split(x, y, random_state=1)
+# Train/test split
+x_train, x_test, y_train, y_test = train_test_split(
+    x, y, random_state=1
+)
 
+# Fit logistic regression
 lr = LogisticRegression()
 lr.fit(x_train, y_train)
 
-print(lr.fit)
-print(lr.coef_)
-print(lr.intercept_)
+print(f"Model accuracy: {lr.score(x_test, y_test):.3f}")
+print(f"Coefficient: {lr.coef_[0][0]:.4f}")
+print(f"Intercept: {lr.intercept_[0]:.4f}")
 
+# Predictions and confusion matrix
 y_pred = lr.predict(x_test)
+conf_matrix = confusion_matrix(y_test, y_pred)
+print(f"Confusion Matrix:\n{conf_matrix}")
 
-cm(y_test, y_pred)
-print(cm)
+# Prediction probabilities
+y_proba = lr.predict_proba(x_test)
+print(f"Prediction Probabilities (first 5):\n{y_proba[:5]}")
 
-lr.predict_proba(x_test)
-
-df = pd.DataFrame({'x':x_test[:,0], 'y':y_test})
+# Sigmoid curve visualization
+df = pd.DataFrame({'x': x_test[:, 0], 'y': y_test})
 df = df.sort_values(by='x')
 
-sigmoid_function = expit(df['x'] * lr.coef_[0][0]+
-                         lr.intercept_[0]).ravel()
-plt.plot(df['x'], sigmoid_function)
-plt.scatter(df['x'], sigmoid_function)
+sigmoid = expit(
+    df['x'] * lr.coef_[0][0] + lr.intercept_[0]
+).ravel()
 
+plt.figure()
+plt.plot(df['x'], sigmoid, color='black', label='Sigmoid curve')
 plt.scatter(df['x'], df['y'], c=df['y'], cmap='rainbow',
-            edgecolors='b')
-
-    
+            edgecolors='b', label='Actual classes')
+plt.title('Logistic Regression Sigmoid Fit')
+plt.xlabel('Feature')
+plt.ylabel('Probability / Class')
+plt.legend()
+plt.show()
