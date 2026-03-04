@@ -1,133 +1,107 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-Created on Tue Sep  3 11:17:19 2024
-
-@author: rohitadvani
-"""
-
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Mon Aug 19 16:08:35 2024
-
-@author: rohitadvani
-"""
+"""Generate a volcano plot from normalized global proteomics data."""
 
 import pandas as pd
 import numpy as np
-import scipy
-
-import string
-import plotly
-import dash_bio
-
 from scipy import stats
-from sklearn.datasets import make_blobs
-
-import seaborn as sns
-from matplotlib.colors import LogNorm
-from matplotlib.colors import LinearSegmentedColormap
-
-import plotly.io as pio
-pio.kaleido.scope.mathjax = None
-pio.kaleido.scope.chromium_args += ("--single-process",) 
-
-import plotly.express as px 
 import plotly.graph_objects as go
-import plotly.figure_factory as ff
-from plotly.figure_factory import create_dendrogram
+import plotly.io as pio
 
-pio.renderers.default= 'png'
+pio.kaleido.scope.mathjax = None
+pio.kaleido.scope.chromium_args += ("--single-process",)
+pio.renderers.default = 'png'
 
-import csv
-
-rawdata = pd.read_csv(r'/Users/rohitadvani/Downloads/1957_P1-3_deliverables/P1/1957_P1_protein.csv', header=None, skiprows=0)
+# Read data
+rawdata = pd.read_csv(
+    r'/Users/rohitadvani/Downloads/1957_P1-3_deliverables/P1/1957_P1_protein.csv',
+    header=None,
+    skiprows=0
+)
 
 df = rawdata.iloc[0:9092, 0:41]
-df2 = df.drop(df.iloc[:, 0:4],axis=1)
-df2.infer_objects().dtypes
 
-WTC = df.iloc[1:,29:35].astype(float)
-WTV = df.iloc[1:,23:29].astype(float)
-KC = df.iloc[1:,35:41].astype(float)
+# Extract replicate columns for each condition
+WTV = df.iloc[1:, 23:29].astype(float)
+WTC = df.iloc[1:, 29:35].astype(float)
 
-WTCsmplstd = WTC.std(axis=1, numeric_only=True)
-WTVsmplstd = WTV.std(axis=1, numeric_only=True)
-KCsmplstd = KC.std(axis=1, numeric_only=True)
+# Calculate group means
+wtv_mean = WTV.mean(axis=1)
+wtc_mean = WTC.mean(axis=1)
 
+# Calculate log2 fold change (WTV vs WTC)
+log2_fc = np.log2(wtv_mean / wtc_mean)
 
-WTC = WTC.assign(mean=WTC.mean(axis=1))
-WTV = WTV.assign(mean=WTV.mean(axis=1))
-KC = KC.assign(mean=KC.mean(axis=1))
+# Run t-test directly on raw replicates per protein
+pvals = []
+for i in range(len(WTV)):
+    wtv_row = WTV.iloc[i].dropna().values
+    wtc_row = WTC.iloc[i].dropna().values
+    if len(wtv_row) >= 2 and len(wtc_row) >= 2:
+        _, pval = stats.ttest_ind(wtv_row, wtc_row)
+        pvals.append(pval)
+    else:
+        pvals.append(np.nan)
 
-WTC.infer_objects().dtypes
-WTV.infer_objects().dtypes
-KC.infer_objects().dtypes
+pvals = np.array(pvals)
 
-WTCavg = (WTC['mean'])
-WTVavg = (WTV['mean'])
-KCavg = (KC['mean'])
+# Calculate -log10(p-value)
+neg_log10_pval = -np.log10(pvals)
 
-WTClog2 = np.log2(WTCavg) 
-WTVlog2 = np.log2(WTVavg)
-KClog2 = np.log2(KCavg)
+# Build a results dataframe for easy filtering
+results = pd.DataFrame({
+    'log2_fc': log2_fc.values,
+    'neg_log10_pval': neg_log10_pval,
+    'pval': pvals
+})
 
-NOP = df.iloc[1:,3:4]
-NOParray = np.asarray(NOP, dtype=np.float64, order=None)
-print(type(NOParray))
+# Remove rows with NaN or infinite values
+results = results.replace([np.inf, -np.inf], np.nan).dropna()
 
-nobs1 = NOParray
-nobs2 = nobs1
+# Define significance thresholds
+fc_threshold = 1.0      # log2 fold change cutoff
+pval_threshold = 0.05   # p-value cutoff
+neg_log10_threshold = -np.log10(pval_threshold)
 
-print(nobs2)
-print(nobs2.shape)
+# Classify each protein as up, down, or not significant
+conditions = [
+    (results['log2_fc'] >= fc_threshold) & (results['neg_log10_pval'] >= neg_log10_threshold),
+    (results['log2_fc'] <= -fc_threshold) & (results['neg_log10_pval'] >= neg_log10_threshold)
+]
+choices = ['Upregulated', 'Downregulated']
+results['regulation'] = np.select(conditions, choices, default='Not Significant')
 
-mean1 = WTV['mean'].astype(float)
-mean2 = WTC['mean'].astype(float)
+# Color mapping
+color_map = {
+    'Upregulated': 'red',
+    'Downregulated': 'blue',
+    'Not Significant': 'grey'
+}
 
-mean1 = np.asarray(mean1, dtype=np.float64, order=None)
-mean1 = mean1[~np.isnan(mean1).all(axis=0)]
-print(mean1)
-
-mean2= np.asarray(mean2, dtype=np.float64, order=None)
-mean2 = mean2[~np.isnan(mean2).all(axis=0)]
-print(mean2)
-
-
-std1 = WTVsmplstd.astype(float)
-std2 = WTCsmplstd.astype(float)
-
-std1 = np.asarray(std1, dtype=np.float64, order=None)
-print(type(std1))
-std2 = np.asarray(std2, dtype=np.float64, order=None)
-print(type(std2))
-
-ttest_output = scipy.stats.ttest_ind_from_stats(mean1, std1, nobs1, mean2, std2, nobs2)
-
-simp_array = np.array(ttest_output, dtype=np.float64 , copy=True, ndmin=1)
-print(simp_array[1])
-
-iso_pvals = simp_array[1]
-
-iso_pvals = np.nan_to_num(iso_pvals, nan=0)
-
-#iso_pvals = iso_pvals[~np.isnan(iso_pvals).all(axis=1)]
-print(iso_pvals)
-
-Pval_negative_log10 = np.log10(iso_pvals) * (-1)
-#KCpvallog10 = np.log10(KCPVALS) * (-1)
-
-
+# Create volcano plot
 fig = go.Figure()
-trace1 = go.Scatter(x=WTVlog2,
-                    y=Pval_negative_log10,
-                    mode='markers',
-                    name='KC')
 
-fig.add_trace(trace1)
+for reg, color in color_map.items():
+    subset = results[results['regulation'] == reg]
+    fig.add_trace(go.Scatter(
+        x=subset['log2_fc'],
+        y=subset['neg_log10_pval'],
+        mode='markers',
+        name=reg,
+        marker=dict(color=color, size=5, opacity=0.6)
+    ))
 
-fig.update_layout(title='Volcano plot WTV')
+# Add threshold lines
+fig.add_hline(y=neg_log10_threshold, line_dash="dash", line_color="black", opacity=0.5)
+fig.add_vline(x=fc_threshold, line_dash="dash", line_color="black", opacity=0.5)
+fig.add_vline(x=-fc_threshold, line_dash="dash", line_color="black", opacity=0.5)
+
+fig.update_layout(
+    title='Volcano Plot: WTV vs WTC',
+    xaxis_title='Log2 Fold Change',
+    yaxis_title='-Log10(p-value)',
+    template='plotly_white'
+)
+
 fig.show()
-
-fig.write_image('fig.png', engine='kaleido')
+fig.write_image('volcano_plot.png', engine='kaleido')
