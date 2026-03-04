@@ -1,0 +1,107 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""Generate a volcano plot from normalized global proteomics data."""
+
+import pandas as pd
+import numpy as np
+from scipy import stats
+import plotly.graph_objects as go
+import plotly.io as pio
+
+pio.kaleido.scope.mathjax = None
+pio.kaleido.scope.chromium_args += ("--single-process",)
+pio.renderers.default = 'png'
+
+# Read data
+rawdata = pd.read_csv(
+    r'/Users/rohitadvani/Downloads/1957_P1-3_deliverables/P1/1957_P1_protein.csv',
+    header=None,
+    skiprows=0
+)
+
+df = rawdata.iloc[0:9092, 0:41]
+
+# Extract replicate columns for each condition
+WTV = df.iloc[1:, 23:29].astype(float)
+WTC = df.iloc[1:, 29:35].astype(float)
+
+# Calculate group means
+wtv_mean = WTV.mean(axis=1)
+wtc_mean = WTC.mean(axis=1)
+
+# Calculate log2 fold change (WTV vs WTC)
+log2_fc = np.log2(wtv_mean / wtc_mean)
+
+# Run t-test directly on raw replicates per protein
+pvals = []
+for i in range(len(WTV)):
+    wtv_row = WTV.iloc[i].dropna().values
+    wtc_row = WTC.iloc[i].dropna().values
+    if len(wtv_row) >= 2 and len(wtc_row) >= 2:
+        _, pval = stats.ttest_ind(wtv_row, wtc_row)
+        pvals.append(pval)
+    else:
+        pvals.append(np.nan)
+
+pvals = np.array(pvals)
+
+# Calculate -log10(p-value)
+neg_log10_pval = -np.log10(pvals)
+
+# Build a results dataframe for easy filtering
+results = pd.DataFrame({
+    'log2_fc': log2_fc.values,
+    'neg_log10_pval': neg_log10_pval,
+    'pval': pvals
+})
+
+# Remove rows with NaN or infinite values
+results = results.replace([np.inf, -np.inf], np.nan).dropna()
+
+# Define significance thresholds
+fc_threshold = 1.0      # log2 fold change cutoff
+pval_threshold = 0.05   # p-value cutoff
+neg_log10_threshold = -np.log10(pval_threshold)
+
+# Classify each protein as up, down, or not significant
+conditions = [
+    (results['log2_fc'] >= fc_threshold) & (results['neg_log10_pval'] >= neg_log10_threshold),
+    (results['log2_fc'] <= -fc_threshold) & (results['neg_log10_pval'] >= neg_log10_threshold)
+]
+choices = ['Upregulated', 'Downregulated']
+results['regulation'] = np.select(conditions, choices, default='Not Significant')
+
+# Color mapping
+color_map = {
+    'Upregulated': 'red',
+    'Downregulated': 'blue',
+    'Not Significant': 'grey'
+}
+
+# Create volcano plot
+fig = go.Figure()
+
+for reg, color in color_map.items():
+    subset = results[results['regulation'] == reg]
+    fig.add_trace(go.Scatter(
+        x=subset['log2_fc'],
+        y=subset['neg_log10_pval'],
+        mode='markers',
+        name=reg,
+        marker=dict(color=color, size=5, opacity=0.6)
+    ))
+
+# Add threshold lines
+fig.add_hline(y=neg_log10_threshold, line_dash="dash", line_color="black", opacity=0.5)
+fig.add_vline(x=fc_threshold, line_dash="dash", line_color="black", opacity=0.5)
+fig.add_vline(x=-fc_threshold, line_dash="dash", line_color="black", opacity=0.5)
+
+fig.update_layout(
+    title='Volcano Plot: WTV vs WTC',
+    xaxis_title='Log2 Fold Change',
+    yaxis_title='-Log10(p-value)',
+    template='plotly_white'
+)
+
+fig.show()
+fig.write_image('volcano_plot.png', engine='kaleido')
