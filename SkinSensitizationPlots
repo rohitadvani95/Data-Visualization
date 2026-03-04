@@ -1,0 +1,148 @@
+"""SVM classification of skin sensitization data with hyperparameter tuning."""
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from matplotlib.colors import Normalize
+from sklearn.model_selection import (
+    train_test_split,
+    StratifiedShuffleSplit,
+    GridSearchCV
+)
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import confusion_matrix, classification_report
+from sklearn.svm import SVC
+
+
+class MidpointNormalize(Normalize):
+    """Custom colormap normalization with a defined midpoint."""
+
+    def __init__(self, vmin=None, vmax=None, midpoint=None, clip=False):
+        self.midpoint = midpoint
+        super().__init__(vmin, vmax, clip)
+
+    def __call__(self, value, clip=None):
+        x_pts = [self.vmin, self.midpoint, self.vmax]
+        y_pts = [0, 0.5, 1]
+        return np.ma.masked_array(np.interp(value, x_pts, y_pts))
+
+
+# --- Data Loading ---
+filepath = r'C:\path\to\your\data.csv'
+rawdata = pd.read_csv(filepath, skiprows=0)
+
+X = rawdata[['MW', 'SA', 'LogP']].astype(float).values
+y = rawdata['Skin'].astype(int).values
+
+print(f"Features shape: {X.shape}")
+print(f"Labels shape: {y.shape}")
+print(f"Class distribution: {np.bincount(y)}")
+
+# --- Train/Test Split ---
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, random_state=42, stratify=y
+)
+
+# --- Feature Scaling ---
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)
+
+# --- Hyperparameter Tuning via Grid Search ---
+C_range = np.logspace(-2, 10, 13)
+gamma_range = np.logspace(-9, 3, 13)
+param_grid = dict(gamma=gamma_range, C=C_range)
+
+cv = StratifiedShuffleSplit(
+    n_splits=5, test_size=0.2, random_state=42
+)
+
+grid = GridSearchCV(
+    SVC(), param_grid=param_grid, cv=cv, scoring='accuracy'
+)
+grid.fit(X_train_scaled, y_train)
+
+print(f"\nBest parameters: {grid.best_params_}")
+print(f"Best CV score: {grid.best_score_:.3f}")
+
+# --- Evaluate on Held-Out Test Set ---
+best_model = grid.best_estimator_
+y_pred = best_model.predict(X_test_scaled)
+
+print(f"\nTest set accuracy: {best_model.score(X_test_scaled, y_test):.3f}")
+print(f"\nConfusion Matrix:\n{confusion_matrix(y_test, y_pred)}")
+print(f"\nClassification Report:\n{classification_report(y_test, y_pred)}")
+
+# --- 2D Decision Boundary Visualization ---
+# Use only first two features for visualization
+X_2d = X_train_scaled[:, :2]
+y_2d = y_train
+
+C_2d_range = [1e-2, 1, 1e2]
+gamma_2d_range = [1e-1, 1, 1e1]
+classifiers = []
+for C in C_2d_range:
+    for gamma in gamma_2d_range:
+        clf = SVC(C=C, gamma=gamma)
+        clf.fit(X_2d, y_2d)
+        classifiers.append((C, gamma, clf))
+
+fig, axes = plt.subplots(
+    len(C_2d_range), len(gamma_2d_range), figsize=(12, 10)
+)
+xx, yy = np.meshgrid(
+    np.linspace(-3, 3, 200), np.linspace(-3, 3, 200)
+)
+
+for k, (C, gamma, clf) in enumerate(classifiers):
+    row = k // len(gamma_2d_range)
+    col = k % len(gamma_2d_range)
+    ax = axes[row, col]
+
+    Z = clf.decision_function(np.c_[xx.ravel(), yy.ravel()])
+    Z = Z.reshape(xx.shape)
+
+    ax.set_title(
+        f"gamma=10^{int(np.log10(gamma))}, "
+        f"C=10^{int(np.log10(C))}",
+        size='medium'
+    )
+    ax.pcolormesh(xx, yy, -Z, cmap=plt.cm.RdBu, shading='auto')
+    ax.scatter(
+        X_2d[:, 0], X_2d[:, 1],
+        c=y_2d, cmap=plt.cm.RdBu_r, edgecolors='k'
+    )
+    ax.set_xticks(())
+    ax.set_yticks(())
+
+plt.tight_layout()
+plt.savefig('decision_boundaries.png', dpi=150)
+plt.show()
+
+# --- Validation Accuracy Heatmap ---
+scores = grid.cv_results_['mean_test_score'].reshape(
+    len(C_range), len(gamma_range)
+)
+midpoint = np.median(scores)
+
+plt.figure(figsize=(10, 8))
+plt.subplots_adjust(left=0.2, right=0.95, bottom=0.15, top=0.95)
+plt.imshow(
+    scores, interpolation='nearest', cmap=plt.cm.hot,
+    norm=MidpointNormalize(vmin=scores.min(), midpoint=midpoint)
+)
+plt.xlabel('gamma')
+plt.ylabel('C')
+plt.colorbar(label='Mean CV Accuracy')
+plt.xticks(
+    np.arange(len(gamma_range)),
+    [f'{g:.0e}' for g in gamma_range],
+    rotation=45
+)
+plt.yticks(
+    np.arange(len(C_range)),
+    [f'{c:.0e}' for c in C_range]
+)
+plt.title('Validation Accuracy (Grid Search)')
+plt.savefig('validation_heatmap.png', dpi=150)
+plt.show()
