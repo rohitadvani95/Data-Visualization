@@ -1,0 +1,151 @@
+"""Generate volcano plots comparing WTV vs WTC and KC vs WTC."""
+
+import pandas as pd
+import numpy as np
+from scipy import stats
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import plotly.io as pio
+
+pio.renderers.default = 'png'
+
+# Read data
+rawdata = pd.read_csv(
+    r'C:\Users\thetr\OneDrive\Documents\Python Scripts'
+    r'\1957_P1-3_deliverables\P1\1957_P1_protein.csv',
+    header=None,
+    skiprows=0
+)
+
+df = rawdata.iloc[0:9092, 0:41]
+
+# Extract replicate columns for each condition
+WTV = df.iloc[1:, 23:29].astype(float).reset_index(drop=True)
+WTC = df.iloc[1:, 29:35].astype(float).reset_index(drop=True)
+KC = df.iloc[1:, 35:41].astype(float).reset_index(drop=True)
+
+
+def compute_volcano_data(group1, group2):
+    """Compute log2 fold change and p-values for two groups.
+
+    @args:
+        group1 -- DataFrame of replicate values for condition 1.
+        group2 -- DataFrame of replicate values for condition 2.
+
+    @returns: DataFrame with log2_fc, pval, and neg_log10_pval columns.
+    """
+    mean1 = group1.mean(axis=1)
+    mean2 = group2.mean(axis=1)
+
+    log2_fc = np.log2(mean1 / mean2)
+
+    pvals = []
+    for i in range(len(group1)):
+        row1 = group1.iloc[i].dropna().values
+        row2 = group2.iloc[i].dropna().values
+        if len(row1) >= 2 and len(row2) >= 2:
+            _, pval = stats.ttest_ind(row1, row2)
+            pvals.append(pval)
+        else:
+            pvals.append(np.nan)
+
+    pvals = np.array(pvals)
+    neg_log10_pval = -np.log10(pvals)
+
+    result = pd.DataFrame({
+        'log2_fc': log2_fc.values,
+        'pval': pvals,
+        'neg_log10_pval': neg_log10_pval
+    })
+
+    return result.replace([np.inf, -np.inf], np.nan).dropna()
+
+
+def classify_regulation(results, fc_thresh=1.0, pval_thresh=0.05):
+    """Classify proteins as up/down regulated or not significant.
+
+    @args:
+        results -- DataFrame from compute_volcano_data.
+        fc_thresh -- log2 fold change cutoff (default 1.0).
+        pval_thresh -- p-value cutoff (default 0.05).
+
+    @returns: DataFrame with added 'regulation' column.
+    """
+    neg_log10_thresh = -np.log10(pval_thresh)
+    conditions = [
+        (results['log2_fc'] >= fc_thresh)
+        & (results['neg_log10_pval'] >= neg_log10_thresh),
+        (results['log2_fc'] <= -fc_thresh)
+        & (results['neg_log10_pval'] >= neg_log10_thresh)
+    ]
+    choices = ['Upregulated', 'Downregulated']
+    results['regulation'] = np.select(
+        conditions, choices, default='Not Significant'
+    )
+    return results
+
+
+def plot_volcano(results, title, fc_thresh=1.0, pval_thresh=0.05):
+    """Create a volcano plot with significance coloring.
+
+    @args:
+        results -- DataFrame with log2_fc, neg_log10_pval, regulation.
+        title -- plot title string.
+        fc_thresh -- log2 fold change cutoff (default 1.0).
+        pval_thresh -- p-value cutoff (default 0.05).
+
+    @returns: plotly Figure object.
+    """
+    color_map = {
+        'Upregulated': 'red',
+        'Downregulated': 'blue',
+        'Not Significant': 'grey'
+    }
+
+    fig = go.Figure()
+
+    for reg, color in color_map.items():
+        subset = results[results['regulation'] == reg]
+        fig.add_trace(go.Scatter(
+            x=subset['log2_fc'],
+            y=subset['neg_log10_pval'],
+            mode='markers',
+            name=reg,
+            marker=dict(color=color, size=5, opacity=0.6)
+        ))
+
+    neg_log10_thresh = -np.log10(pval_thresh)
+    fig.add_hline(
+        y=neg_log10_thresh,
+        line_dash="dash", line_color="black", opacity=0.5
+    )
+    fig.add_vline(
+        x=fc_thresh,
+        line_dash="dash", line_color="black", opacity=0.5
+    )
+    fig.add_vline(
+        x=-fc_thresh,
+        line_dash="dash", line_color="black", opacity=0.5
+    )
+
+    fig.update_layout(
+        title=title,
+        xaxis_title='Log2 Fold Change',
+        yaxis_title='-Log10(p-value)',
+        template='plotly_white'
+    )
+
+    return fig
+
+
+# --- WTV vs WTC ---
+wtv_results = compute_volcano_data(WTV, WTC)
+wtv_results = classify_regulation(wtv_results)
+fig_wtv = plot_volcano(wtv_results, 'Volcano Plot: WTV vs WTC')
+fig_wtv.show()
+
+# --- KC vs WTC ---
+kc_results = compute_volcano_data(KC, WTC)
+kc_results = classify_regulation(kc_results)
+fig_kc = plot_volcano(kc_results, 'Volcano Plot: KC vs WTC')
+fig_kc.show()
