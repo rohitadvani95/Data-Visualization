@@ -14,7 +14,7 @@ pio.renderers.default = 'png'
 
 # Read data
 rawdata = pd.read_csv(
-    r'/Users/rohitadvani/Downloads/1957_P1-3_deliverables/P1/1957_P1_protein.csv',
+    r'/Users/YOURUSERNAMEHERE/YOURFILEPATH/PRE-PROCESSEDCSVFILEHERE.csv',
     header=None,
     skiprows=0
 )
